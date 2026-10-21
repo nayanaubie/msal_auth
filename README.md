@@ -422,6 +422,22 @@ Future<bool?> isSharedDevice() async {
 
 ---
 
+### Listen to Account Changes 👂
+
+In single account mode, `onCurrentAccountChanged` emits the signed-in account whenever it changes and `null` once it is signed out. It's updated by `currentAccount`, `acquireToken`, `acquireTokenSilent` and `signOut`. On Android it also reacts when another app signs the user in or out of a device in shared device mode, so the app can clear the previous user's data right away.
+
+```Dart
+final subscription = publicClientApplication.onCurrentAccountChanged.listen((account) {
+  if (account == null) {
+    // Signed out, clear the user's data.
+  }
+});
+```
+
+On iOS/macOS there is no such notification from other apps, so call `currentAccount` when the app returns to the foreground and the stream reports any change.
+
+---
+
 ### Exception Handling 🚨
 
 All MSAL exceptions thrown by the Android and iOS/macOS platforms can be handled on the Dart side. You can manage them according to your use case, such as by logging the errors, displaying user-friendly messages, retrying the operation, or triggering specific app behaviors based on the type of exception.

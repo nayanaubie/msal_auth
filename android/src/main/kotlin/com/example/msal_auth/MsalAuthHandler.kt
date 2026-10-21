@@ -1,5 +1,11 @@
 package com.example.msal_auth
 
+import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import com.google.gson.Gson
 import com.microsoft.identity.client.AcquireTokenParameters
 import com.microsoft.identity.client.AcquireTokenSilentParameters
@@ -19,6 +25,16 @@ class MsalAuthHandler(private val msal: MsalAuth) : MethodChannel.MethodCallHand
     private lateinit var channel: MethodChannel
 
     /**
+     * Notifies Dart when the account of a device in shared device mode changes, e.g. when another
+     * app signs the user in or out. Dart reads the current account again in response.
+     */
+    private val accountChangedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            channel.invokeMethod("currentAccountChanged", null)
+        }
+    }
+
+    /**
      * Initializes the method channel & sets the handler.
      *
      * @param messenger the binary messenger from Engine.
@@ -26,6 +42,7 @@ class MsalAuthHandler(private val msal: MsalAuth) : MethodChannel.MethodCallHand
     fun initialize(messenger: BinaryMessenger) {
         channel = MethodChannel(messenger, "msal_auth")
         channel.setMethodCallHandler(this)
+        registerAccountChangedReceiver()
     }
 
     /**
@@ -33,6 +50,22 @@ class MsalAuthHandler(private val msal: MsalAuth) : MethodChannel.MethodCallHand
      */
     fun dispose() {
         channel.setMethodCallHandler(null)
+        msal.context.unregisterReceiver(accountChangedReceiver)
+    }
+
+    /**
+     * Registers [accountChangedReceiver] for the broadcast sent on account changes in shared device mode.
+     * https://learn.microsoft.com/entra/msal/android/shared-devices
+     */
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private fun registerAccountChangedReceiver() {
+        val filter = IntentFilter(CURRENT_ACCOUNT_CHANGED_BROADCAST)
+        // The broadcast is sent by the broker app, so the receiver has to be exported.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            msal.context.registerReceiver(accountChangedReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            msal.context.registerReceiver(accountChangedReceiver, filter)
+        }
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -317,5 +350,10 @@ class MsalAuthHandler(private val msal: MsalAuth) : MethodChannel.MethodCallHand
             "PublicClientApplication should be initialized to call $methodName.",
             null
         )
+    }
+
+    companion object {
+        private const val CURRENT_ACCOUNT_CHANGED_BROADCAST =
+            "com.microsoft.identity.client.sharedmode.CURRENT_ACCOUNT_CHANGED"
     }
 }
