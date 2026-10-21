@@ -19,10 +19,12 @@ final class Utils {
     if (Platform.isAndroid) {
       assert(androidConfig != null, 'Android config can not be null');
 
-      final configStr =
-          await rootBundle.loadString(androidConfig!.configFilePath);
-      final config = json.decode(configStr) as Map<String, dynamic>
-        ..addAll({
+      final config = Map<String, dynamic>.of(
+        androidConfig!.config ??
+            json.decode(
+              await rootBundle.loadString(androidConfig.configFilePath!),
+            ),
+      )..addAll({
           'client_id': clientId,
           'redirect_uri': androidConfig.redirectUri,
         });

@@ -1,3 +1,6 @@
+## Unreleased
+- Added `config` to `AndroidConfig` to pass the MSAL configuration as a map instead of an asset file, for configurations only known at runtime. [#issue/103](https://github.com/nayanAubie/msal_auth/issues/103)
+
 ## 3.5.3
 - Pin the Swift MSAL library to `2.14.1` and prevent updates beyond this version to avoid native min deployment target breaking changes. [#issue/151](https://github.com/nayanAubie/msal_auth/issues/151)
 

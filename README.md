@@ -111,6 +111,15 @@ Follow the steps below to complete the Android configuration.
 
 > There is no need to include `client_id` and `redirect_uri` in this JSON, as they will be added programmatically by the Dart code when the public client application is created.
 
+If the configuration is only known at runtime, e.g. loaded from your backend or received through MDM managed app configuration, pass it as a map with `config` instead of `configFilePath`:
+
+```Dart
+androidConfig: AndroidConfig(
+  config: jsonDecode(configJson),
+  redirectUri: '<Android Redirect URI>',
+),
+```
+
 ---
 
 ### Setup Account Mode
