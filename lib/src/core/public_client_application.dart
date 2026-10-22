@@ -77,6 +77,11 @@ class PublicClientApplication {
     /// Required for B2C scenarios where you want to refresh tokens using
     /// a different policy than the one used for initial authentication.
     String? authority,
+
+    /// Skips the cached access token and uses the refresh token to get a new
+    /// one. Useful when an API rejects a token that has not expired yet, e.g.
+    /// after the user's permissions or claims have changed.
+    bool forceRefresh = false,
   }) async {
     assert(scopes.isNotEmpty, 'Scopes can not be empty');
     if (this is MultipleAccountPca) {
@@ -89,6 +94,7 @@ class PublicClientApplication {
       'scopes': scopes,
       'identifier': identifier,
       'authority': authority,
+      'forceRefresh': forceRefresh,
     };
     try {
       final result =

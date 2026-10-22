@@ -342,6 +342,8 @@ class MsalAuth(internal val context: Context) {
                     put("activeBrokerPackageName", exception.activeBrokerPackageName)
                 }
             }
+
+            else -> flutterErrorCode = exception.errorCode
         }
 
         result.error(flutterErrorCode, exception.localizedMessage, errorDetails)

@@ -24,11 +24,22 @@ final class AppleConfig {
   /// upstream default-derivation behavior is preserved.
   final String? redirectUri;
 
+  /// Keychain group in which MSAL stores the token cache, without the Team ID
+  /// prefix. MSAL defaults to `com.microsoft.adalcache` on iOS and
+  /// `com.microsoft.identity.universalstorage` on macOS, which every app of the
+  /// same Apple team shares: apps using the same client ID then see each
+  /// other's accounts, and signing out in one app signs out the others. Set a
+  /// group that only your app declares in its entitlements (e.g. the bundle
+  /// identifier) to keep its cache private. Optional; when null, the MSAL
+  /// default is used.
+  final String? keychainSharingGroup;
+
   AppleConfig({
     this.authority,
     this.authorityType = AuthorityType.aad,
     this.broker = Broker.msAuthenticator,
     this.redirectUri,
+    this.keychainSharingGroup,
   });
 }
 

@@ -72,6 +72,7 @@ extension PlatformExceptionUtils on PlatformException {
           correlationId: correlationId,
         ),
       'NO_CURRENT_ACCOUNT' => MsalNoCurrentAccountException(message: message),
+      'PCA_INIT' => MsalPcaInitException(message: message),
       _ => MsalException(message: message, correlationId: correlationId),
     };
   }

@@ -37,6 +37,7 @@ public class MsalAuthPlugin: NSObject, FlutterPlugin {
             MsalAuth.authorityType = authorityType
             let authority = dict["authority"] as? String
             let redirectUri = dict["redirectUri"] as? String
+            let keychainSharingGroup = dict["keychainSharingGroup"] as? String
             let broker = dict["broker"] as? String
 
             createPublicClientApplication(
@@ -44,6 +45,7 @@ public class MsalAuthPlugin: NSObject, FlutterPlugin {
                 clientId: clientId, authority: authority,
                 authorityType: authorityType,
                 redirectUri: redirectUri,
+                keychainSharingGroup: keychainSharingGroup,
                 broker: broker,
                 result: result)
         case "acquireToken":
@@ -82,9 +84,11 @@ public class MsalAuthPlugin: NSObject, FlutterPlugin {
 
             let identifier = dict["identifier"] as? String
             let authority = dict["authority"] as? String
+            let forceRefresh = dict["forceRefresh"] as? Bool ?? false
 
             acquireTokenSilent(
-                scopes: scopes, identifier: identifier, authority: authority, result: result)
+                scopes: scopes, identifier: identifier, authority: authority,
+                forceRefresh: forceRefresh, result: result)
 
         case "currentAccount": getCurrentAccount(result: result)
 
@@ -96,7 +100,9 @@ public class MsalAuthPlugin: NSObject, FlutterPlugin {
                 return
             }
 
-            getAccount(identifier: identifier, result: result)
+            if let account = getAccount(identifier: identifier, result: result) {
+                result(getCurrentAccountDic(account))
+            }
 
         case "getAccounts": getAccounts(result: result)
 
@@ -120,6 +126,7 @@ public class MsalAuthPlugin: NSObject, FlutterPlugin {
     ///   - authority: Authority URL.
     ///   - authorityType: Authority type.
     ///   - redirectUri: Redirect URI. When nil, MSAL derives the default.
+    ///   - keychainSharingGroup: Keychain group of the token cache. When nil, MSAL uses its default group.
     ///   - broker: Broker used for authentication. Disabling it routes auth
     ///     through the web view instead of the Microsoft SSO extension.
     ///   - result: Result of the method call.
@@ -128,6 +135,7 @@ public class MsalAuthPlugin: NSObject, FlutterPlugin {
         clientId: String, authority: String?,
         authorityType: AuthorityType,
         redirectUri: String?,
+        keychainSharingGroup: String?,
         broker: String?,
         result: @escaping FlutterResult
     ) {
@@ -170,25 +178,30 @@ public class MsalAuthPlugin: NSObject, FlutterPlugin {
                 }
             } catch let error as NSError {
                 setMsalError(error: error, result: result)
+                return
             }
         } else {
             pcaConfig = MSALPublicClientApplicationConfig(
                 clientId: clientId, redirectUri: redirectUri, authority: nil)
         }
 
-        if let application = try? MSALPublicClientApplication(
-            configuration: pcaConfig)
-        {
+        if let keychainSharingGroup {
+            pcaConfig.cacheConfig.keychainSharingGroup = keychainSharingGroup
+        }
+
+        do {
+            let application = try MSALPublicClientApplication(
+                configuration: pcaConfig)
             // We will only have a public client application object. Apple MSAL does not have specific class for different account mode (Single & multiple). So we just assigned type that we receives from Dart and then call methods as per the type.
             MsalAuth.publicClientApplication = application
             MsalAuth.pcaType = pcaType
             result(true)
-        } else {
+        } catch let error as NSError {
             // Sets initialization error. This is a custom exception created at Dart side.
             result(
                 FlutterError(
                     code: "PCA_INIT",
-                    message: "Unable to create public client application",
+                    message: "Unable to create public client application: \(error.localizedDescription)",
                     details: nil))
         }
     }
@@ -271,10 +284,11 @@ public class MsalAuthPlugin: NSObject, FlutterPlugin {
     ///   - scopes: Scopes to be requested.
     ///   - identifier: Account identifier.
     ///   - authority: Authority URL to override cached account's authority.
+    ///   - forceRefresh: Whether to skip the cached access token and refresh it.
     ///   - result: Result of the method call.
     private func acquireTokenSilent(
         scopes: [String], identifier: String? = nil, authority: String?,
-        result: @escaping FlutterResult
+        forceRefresh: Bool, result: @escaping FlutterResult
     ) {
         guard let pca = MsalAuth.publicClientApplication else {
             setPcaInitError(methodName: "acquireTokenSilent", result: result)
@@ -282,12 +296,16 @@ public class MsalAuthPlugin: NSObject, FlutterPlugin {
         }
 
         if MsalAuth.pcaType == PublicClientApplicationType.single {
-            getCurrentAccount { currentAccount in
+            getCurrentAccount { currentAccount, error in
                 guard let currentAccount else {
-                    self.setNoCurrentAccountError(result: result)
+                    if let error {
+                        self.setMsalError(error: error, result: result)
+                    } else {
+                        self.setNoCurrentAccountError(result: result)
+                    }
                     return
                 }
-                self.executeSilentRequest(pca: pca, account: currentAccount, scopes: scopes, authority: authority, result: result)
+                self.executeSilentRequest(pca: pca, account: currentAccount, scopes: scopes, authority: authority, forceRefresh: forceRefresh, result: result)
             }
             return
         }
@@ -297,19 +315,21 @@ public class MsalAuthPlugin: NSObject, FlutterPlugin {
             return
         }
 
-        executeSilentRequest(pca: pca, account: account, scopes: scopes, authority: authority, result: result)
+        executeSilentRequest(pca: pca, account: account, scopes: scopes, authority: authority, forceRefresh: forceRefresh, result: result)
     }
 
     /// Returns current account. used with single account mode.
+    /// `completion` receives the MSAL error when the account lookup fails, so callers
+    /// do not report it as "no current account".
     private func getCurrentAccount(
         result: FlutterResult? = nil,
-        completion: ((MSALAccount?) -> Void)? = nil
+        completion: ((MSALAccount?, NSError?) -> Void)? = nil
     ) {
         guard let pca = MsalAuth.publicClientApplication else {
             if let result {
                 setPcaInitError(methodName: "getCurrentAccount", result: result)
             }
-            completion?(nil)
+            completion?(nil, nil)
             return
         }
 
@@ -317,7 +337,7 @@ public class MsalAuthPlugin: NSObject, FlutterPlugin {
             current, previous, error in
             if let current {
                 result?(self.getCurrentAccountDic(current))
-                completion?(current)
+                completion?(current, nil)
                 return
             }
 
@@ -328,7 +348,7 @@ public class MsalAuthPlugin: NSObject, FlutterPlugin {
                     self.setNoCurrentAccountError(result: result)
                 }
             }
-            completion?(nil)
+            completion?(nil, error as NSError?)
         }
     }
 
@@ -340,9 +360,13 @@ public class MsalAuthPlugin: NSObject, FlutterPlugin {
             return
         }
 
-        getCurrentAccount { currentAccount in
+        getCurrentAccount { currentAccount, error in
             guard let currentAccount else {
-                self.setNoCurrentAccountError(result: result)
+                if let error {
+                    self.setMsalError(error: error, result: result)
+                } else {
+                    self.setNoCurrentAccountError(result: result)
+                }
                 return
             }
 
@@ -456,15 +480,18 @@ extension MsalAuthPlugin {
     ///   - account: Account to acquire token for.
     ///   - scopes: Scopes to be requested.
     ///   - authority: Authority URL to override cached account's authority.
+    ///   - forceRefresh: Whether to skip the cached access token and refresh it.
     ///   - result: Result of the method call.
     fileprivate func executeSilentRequest(
         pca: MSALPublicClientApplication,
         account: MSALAccount,
         scopes: [String],
         authority: String?,
+        forceRefresh: Bool,
         result: @escaping FlutterResult
     ) {
         let silentParams = MSALSilentTokenParameters(scopes: scopes, account: account)
+        silentParams.forceRefresh = forceRefresh
 
         if let authority {
             do {
@@ -599,8 +626,8 @@ extension MsalAuthPlugin {
                 flutterErrorCode = "SERVER_ERROR"
             case .insufficientDeviceStrength:
                 flutterErrorCode = "INSUFFICIENT_DEVICE_STRENGTH"
-            @unknown default:
-                break
+            default:
+                flutterErrorCode = error.domain
             }
         } else {
             flutterErrorCode = error.domain

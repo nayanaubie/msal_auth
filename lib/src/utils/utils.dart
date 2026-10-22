@@ -35,6 +35,7 @@ final class Utils {
         'authority': appleConfig!.authority,
         'authorityType': appleConfig.authorityType.name,
         'redirectUri': appleConfig.redirectUri,
+        'keychainSharingGroup': appleConfig.keychainSharingGroup,
         'broker': appleConfig.broker.name,
       });
     }
